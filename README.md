@@ -1,4 +1,4 @@
-# Huntarr/4tdarr
+# Huntarr [Tdarr Edition] Scale or Kill Tdarr Node Containers Based on PLEX Transcoding Usage
 
 A Docker container that manages Tdarr nodes based on Plex transcoding activity. This tool helps optimize your GPU usage by dynamically adjusting Tdarr workers or stopping Tdarr completely when Plex needs transcoding resources.
 
