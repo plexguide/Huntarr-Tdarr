@@ -164,24 +164,42 @@ class HuntarrTdarr:
         else:
             logger.info(f"NOTICE: nodeID is still the same [{self.tdarr_node_id}].")
 
-    def check_tautulli_connection(self) -> bool:
-        """Check connection to Tautulli"""
-        logger.info(f"Checking Tautulli at: {self.config.tautulli_url}")
+    def check_single_tautulli_connection(self, api_key: str, url: str) -> bool:
+        """Check connection to a single Tautulli instance"""
+        if not api_key or not url:
+            return False
+        
+        logger.info(f"Checking Tautulli at: {url}")
         
         try:
-            response = requests.get(f"{self.config.tautulli_url}?apikey={self.config.tautulli_api_key}&cmd=get_activity")
+            response = requests.get(f"{url}?apikey={api_key}&cmd=get_activity")
             response.raise_for_status()
             response.json()  # Validate JSON
-            logger.info(f"Tautulli OK: {self.config.tautulli_url}")
+            logger.info(f"Tautulli OK: {url}")
             return True
         except Exception as e:
-            logger.warning(f"WARNING: Could not connect or invalid JSON: {self.config.tautulli_url} - {e}")
+            logger.warning(f"WARNING: Could not connect or invalid JSON: {url} - {e}")
             return False
 
-    def fetch_transcode_counts_from_tautulli(self) -> Tuple[int, int]:
-        """Fetch transcoding counts from Tautulli"""
+    def check_tautulli_connections_on_startup(self) -> None:
+        """Check all Tautulli connections on startup"""
+        # T1 must work
+        if not self.check_single_tautulli_connection(self.config.t1_tautulli_api_key, self.config.t1_tautulli_url):
+            logger.error("ERROR: T1 not reachable. Exiting.")
+            sys.exit(1)
+        
+        # T2..T4 are optional
+        self.check_single_tautulli_connection(self.config.t2_tautulli_api_key, self.config.t2_tautulli_url)
+        self.check_single_tautulli_connection(self.config.t3_tautulli_api_key, self.config.t3_tautulli_url)
+        self.check_single_tautulli_connection(self.config.t4_tautulli_api_key, self.config.t4_tautulli_url)
+
+    def fetch_transcode_counts_from_tautulli(self, api_key: str, url: str) -> Tuple[int, int]:
+        """Fetch transcoding counts from a Tautulli instance"""
+        if not api_key or not url:
+            return (0, 0)
+        
         try:
-            response = requests.get(f"{self.config.tautulli_url}?apikey={self.config.tautulli_api_key}&cmd=get_activity")
+            response = requests.get(f"{url}?apikey={api_key}&cmd=get_activity")
             response.raise_for_status()
             data = response.json()
             
@@ -206,14 +224,77 @@ class HuntarrTdarr:
             logger.warning(f"Error fetching Tautulli data: {e}")
             return (0, 0)
 
+    def get_total_watchers(self) -> int:
+        """Get total number of transcoding watchers from all Tautulli instances"""
+        total = 0
+        
+        # T1 is required
+        t1_local, t1_remote = self.fetch_transcode_counts_from_tautulli(
+            self.config.t1_tautulli_api_key, self.config.t1_tautulli_url
+        )
+        total += t1_local + t1_remote
+        
+        # Optional T2
+        if self.config.t2_tautulli_api_key and self.config.t2_tautulli_url:
+            t2_local, t2_remote = self.fetch_transcode_counts_from_tautulli(
+                self.config.t2_tautulli_api_key, self.config.t2_tautulli_url
+            )
+            total += t2_local + t2_remote
+        
+        # Optional T3
+        if self.config.t3_tautulli_api_key and self.config.t3_tautulli_url:
+            t3_local, t3_remote = self.fetch_transcode_counts_from_tautulli(
+                self.config.t3_tautulli_api_key, self.config.t3_tautulli_url
+            )
+            total += t3_local + t3_remote
+        
+        # Optional T4
+        if self.config.t4_tautulli_api_key and self.config.t4_tautulli_url:
+            t4_local, t4_remote = self.fetch_transcode_counts_from_tautulli(
+                self.config.t4_tautulli_api_key, self.config.t4_tautulli_url
+            )
+            total += t4_local + t4_remote
+        
+        return total
+
     def is_plex_transcoding_over_threshold(self) -> bool:
         """Check if Plex transcoding is over the threshold"""
         logger.info("Checking Plex transcodes...")
 
-        local, remote = self.fetch_transcode_counts_from_tautulli()
-        self.total_count = local + remote
+        total_local = 0
+        total_remote = 0
 
-        logger.info(f"Found {local} local & {remote} remote => total={self.total_count}, threshold={self.config.transcode_threshold}")
+        # T1
+        t1_local, t1_remote = self.fetch_transcode_counts_from_tautulli(
+            self.config.t1_tautulli_api_key, self.config.t1_tautulli_url
+        )
+        total_local += t1_local
+        total_remote += t1_remote
+
+        # T2
+        t2_local, t2_remote = self.fetch_transcode_counts_from_tautulli(
+            self.config.t2_tautulli_api_key, self.config.t2_tautulli_url
+        )
+        total_local += t2_local
+        total_remote += t2_remote
+
+        # T3
+        t3_local, t3_remote = self.fetch_transcode_counts_from_tautulli(
+            self.config.t3_tautulli_api_key, self.config.t3_tautulli_url
+        )
+        total_local += t3_local
+        total_remote += t3_remote
+
+        # T4
+        t4_local, t4_remote = self.fetch_transcode_counts_from_tautulli(
+            self.config.t4_tautulli_api_key, self.config.t4_tautulli_url
+        )
+        total_local += t4_local
+        total_remote += t4_remote
+
+        self.total_count = total_local + total_remote
+
+        logger.info(f"Found {total_local} local & {total_remote} remote => total={self.total_count}, threshold={self.config.transcode_threshold}")
 
         # Return True if watchers >= threshold
         return self.total_count >= self.config.transcode_threshold
@@ -231,280 +312,6 @@ class HuntarrTdarr:
         except Exception as e:
             logger.error(f"Error checking container status: {e}")
             return False
-
-    # ... (rest of the methods remain the same as in the previous version)
-
-    def run(self) -> None:
-        """Main execution loop"""
-        # Initial setup
-        self.ensure_node_id_loaded()
-        
-        # Check Tautulli connection
-        if not self.check_tautulli_connection():
-            logger.error("ERROR: Tautulli not reachable. Exiting.")
-            sys.exit(1)
-            
-        self.set_initial_gpu_workers()
-        
-        # Main loop
-        while True:
-            try:
-                if self.is_plex_transcoding_over_threshold():
-                    # Transcoding is over threshold
-                    if self.config.tdarr_alter_workers:
-                        # Adjust workers mode
-                        operation = f"reduce_workers_{self.total_count}"
-                        
-                        try:
-                            response = requests.post(
-                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
-                                headers={"Content-Type": "application/json"},
-                                json={"data": {"nodeID": self.tdarr_node_id}}
-                            )
-                            response.raise_for_status()
-                            data = response.json()
-                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
-                            
-                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
-                                self.consecutive_duplicates += 1
-                                if self.consecutive_duplicates > 2:
-                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
-                                    time.sleep(self.config.wait_seconds)
-                                    continue
-                            else:
-                                self.consecutive_duplicates = 0
-                            
-                            self.last_operation = operation
-                            self.last_gpu_limit = current_limit
-                            
-                            logger.info("Threshold exceeded. Reducing GPU workers.")
-                            self.adjust_tdarr_workers(self.total_count)
-                            time.sleep(self.config.wait_seconds)
-                            
-                        except Exception as e:
-                            logger.error(f"Error in worker adjustment: {e}")
-                            time.sleep(self.config.wait_seconds)
-                    else:
-                        # Kill container mode
-                        operation = "kill_container"
-                        
-                        if operation == self.last_operation:
-                            self.consecutive_duplicates += 1
-                            if self.consecutive_duplicates > 2:
-                                logger.info(f"Skipping duplicate container management (done {self.consecutive_duplicates} times already)")
-                                time.sleep(self.config.wait_seconds)
-                                continue
-                        else:
-                            self.consecutive_duplicates = 0
-                        
-                        self.last_operation = operation
-                        
-                        if self.is_container_running():
-                            logger.info(f"Threshold exceeded: Killing {self.config.container_name}")
-                            subprocess.run(["docker", "kill", self.config.container_name], check=False)
-                        else:
-                            logger.info(f"{self.config.container_name} is already stopped.")
-                        
-                        time.sleep(self.config.wait_seconds)
-                else:
-                    # Below threshold
-                    if self.config.tdarr_alter_workers:
-                        # Adjust workers mode
-                        operation = f"adjust_workers_{self.total_count}"
-                        
-                        try:
-                            response = requests.post(
-                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
-                                headers={"Content-Type": "application/json"},
-                                json={"data": {"nodeID": self.tdarr_node_id}}
-                            )
-                            response.raise_for_status()
-                            data = response.json()
-                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
-                            
-                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
-                                self.consecutive_duplicates += 1
-                                if self.consecutive_duplicates > 2:
-                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
-                                    time.sleep(self.config.basic_check)
-                                    continue
-                            else:
-                                self.consecutive_duplicates = 0
-                            
-                            self.last_operation = operation
-                            self.last_gpu_limit = current_limit
-                            
-                            self.adjust_tdarr_workers(self.total_count)
-                        
-                        except Exception as e:
-                            logger.error(f"Error in worker adjustment: {e}")
-                    
-                    # Check container state regardless of mode
-                    operation = "start_container"
-                    
-                    if operation == self.last_operation and self.is_container_running():
-                        self.consecutive_duplicates += 1
-                        if self.consecutive_duplicates > 2:
-                            logger.info(f"Skipping duplicate container check (done {self.consecutive_duplicates} times already)")
-                            time.sleep(self.config.basic_check)
-                            continue
-                    else:
-                        self.consecutive_duplicates = 0
-                    
-                    self.last_operation = operation
-                    
-                    if not self.is_container
-def run(self) -> None:
-        """Main execution loop"""
-        # Initial setup
-        self.ensure_node_id_loaded()
-        
-        # Check Tautulli connection
-        if not self.check_tautulli_connection():
-            logger.error("ERROR: Tautulli not reachable. Exiting.")
-            sys.exit(1)
-            
-        self.set_initial_gpu_workers()
-        
-        # Main loop
-        while True:
-            try:
-                if self.is_plex_transcoding_over_threshold():
-                    # Transcoding is over threshold
-                    if self.config.tdarr_alter_workers:
-                        # Adjust workers mode
-                        operation = f"reduce_workers_{self.total_count}"
-                        
-                        try:
-                            response = requests.post(
-                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
-                                headers={"Content-Type": "application/json"},
-                                json={"data": {"nodeID": self.tdarr_node_id}}
-                            )
-                            response.raise_for_status()
-                            data = response.json()
-                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
-                            
-                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
-                                self.consecutive_duplicates += 1
-                                if self.consecutive_duplicates > 2:
-                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
-                                    time.sleep(self.config.wait_seconds)
-                                    continue
-                            else:
-                                self.consecutive_duplicates = 0
-                            
-                            self.last_operation = operation
-                            self.last_gpu_limit = current_limit
-                            
-                            logger.info("Threshold exceeded. Reducing GPU workers.")
-                            self.adjust_tdarr_workers(self.total_count)
-                            time.sleep(self.config.wait_seconds)
-                            
-                        except Exception as e:
-                            logger.error(f"Error in worker adjustment: {e}")
-                            time.sleep(self.config.wait_seconds)
-                    else:
-                        # Kill container mode
-                        operation = "kill_container"
-                        
-                        if operation == self.last_operation:
-                            self.consecutive_duplicates += 1
-                            if self.consecutive_duplicates > 2:
-                                logger.info(f"Skipping duplicate container management (done {self.consecutive_duplicates} times already)")
-                                time.sleep(self.config.wait_seconds)
-                                continue
-                        else:
-                            self.consecutive_duplicates = 0
-                        
-                        self.last_operation = operation
-                        
-                        if self.is_container_running():
-                            logger.info(f"Threshold exceeded: Killing {self.config.container_name}")
-                            subprocess.run(["docker", "kill", self.config.container_name], check=False)
-                        else:
-                            logger.info(f"{self.config.container_name} is already stopped.")
-                        
-                        time.sleep(self.config.wait_seconds)
-                else:
-                    # Below threshold
-                    if self.config.tdarr_alter_workers:
-                        # Adjust workers mode
-                        operation = f"adjust_workers_{self.total_count}"
-                        
-                        try:
-                            response = requests.post(
-                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
-                                headers={"Content-Type": "application/json"},
-                                json={"data": {"nodeID": self.tdarr_node_id}}
-                            )
-                            response.raise_for_status()
-                            data = response.json()
-                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
-                            
-                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
-                                self.consecutive_duplicates += 1
-                                if self.consecutive_duplicates > 2:
-                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
-                                    time.sleep(self.config.basic_check)
-                                    continue
-                            else:
-                                self.consecutive_duplicates = 0
-                            
-                            self.last_operation = operation
-                            self.last_gpu_limit = current_limit
-                            
-                            self.adjust_tdarr_workers(self.total_count)
-                        
-                        except Exception as e:
-                            logger.error(f"Error in worker adjustment: {e}")
-                    
-                    # Check container state regardless of mode
-                    operation = "start_container"
-                    
-                    if operation == self.last_operation and self.is_container_running():
-                        self.consecutive_duplicates += 1
-                        if self.consecutive_duplicates > 2:
-                            logger.info(f"Skipping duplicate container check (done {self.consecutive_duplicates} times already)")
-                            time.sleep(self.config.basic_check)
-                            continue
-                    else:
-                        self.consecutive_duplicates = 0
-                    
-                    self.last_operation = operation
-                    
-                    if not self.is_container_running():
-                        # In node kill mode, wait RESTART_DELAY seconds before starting container
-                        if not self.config.tdarr_alter_workers:
-                            logger.info(f"Below threshold in node kill mode -> Waiting {self.config.restart_delay} seconds before starting container {self.config.container_name}.")
-                            initial_watchers = self.get_total_watchers()
-                            delay = self.config.restart_delay
-                            interval = 5
-                            elapsed = 0
-                            
-                            continue_outer_loop = False
-                            while elapsed < delay and not continue_outer_loop:
-                                time.sleep(interval)
-                                elapsed += interval
-                                current_watchers = self.get_total_watchers()
-                                
-                                if current_watchers >= self.config.transcode_threshold:
-                                    logger.info(f"Watcher count increased to {current_watchers} during delay. Skipping container start.")
-                                    continue_outer_loop = True
-                            
-                            if continue_outer_loop:
-                                continue
-                        
-                        logger.info(f"Below threshold -> Starting container {self.config.container_name}.")
-                        subprocess.run(["docker", "start", self.config.container_name], check=False)
-                    else:
-                        logger.info(f"Container {self.config.container_name} is already running.")
-                    
-                    time.sleep(self.config.basic_check)
-            
-            except Exception as e:
-                logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(self.config.basic_check)
 
     def adjust_tdarr_workers(self, watchers: int) -> None:
         """Adjust the number of Tdarr GPU workers based on transcoding load"""
@@ -700,8 +507,7 @@ def run(self) -> None:
                     
                     for i in range(count):
                         requests.post(
-                            f"{
-self.config.tdarr_api_url}/api/v2/alter-worker-limit",
+                            f"{self.config.tdarr_api_url}/api/v2/alter-worker-limit",
                             headers={"Content-Type": "application/json"},
                             json={"data": {"nodeID": self.tdarr_node_id, "process": step, "workerType": "transcodegpu"}}
                         )
@@ -715,10 +521,209 @@ self.config.tdarr_api_url}/api/v2/alter-worker-limit",
         except Exception as e:
             logger.error(f"Error setting initial GPU workers: {e}")
 
-    def get_total_watchers(self) -> int:
-        """Get total number of transcoding watchers"""
-        local, remote = self.fetch_transcode_counts_from_tautulli()
-        return local + remote
+    def run(self) -> None:
+        """Main execution loop"""
+        # Initial setup
+        self.ensure_node_id_loaded()
+        
+        # Check Tautulli connection
+        if not self.check_tautulli_connection():
+            logger.error("ERROR: Tautulli not reachable. Exiting.")
+            sys.exit(1)
+            
+        self.set_initial_gpu_workers()
+        
+        # Main loop
+        while True:
+            try:
+                if self.is_plex_transcoding_over_threshold():
+                    # Transcoding is over threshold
+                    if self.config.tdarr_alter_workers:
+                        # Adjust workers mode
+                        operation = f"reduce_workers_{self.total_count}"
+                        
+                        try:
+                            response = requests.post(
+                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
+                                headers={"Content-Type": "application/json"},
+                                json={"data": {"nodeID": self.tdarr_node_id}}
+                            )
+                            response.raise_for_status()
+                            data = response.json()
+                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
+                            
+                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
+                                self.consecutive_duplicates += 1
+                                if self.consecutive_duplicates > 2:
+                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
+                                    time.sleep(self.config.wait_seconds)
+                                    continue
+                            else:
+                                self.consecutive_duplicates = 0
+                            
+                            self.last_operation = operation
+                            self.last_gpu_limit = current_limit
+                            
+                            logger.info("Threshold exceeded. Reducing GPU workers.")
+                            self.adjust_tdarr_workers(self.total_count)
+                            time.sleep(self.config.wait_seconds)
+                            
+                        except Exception as e:
+                            logger.error(f"Error in worker adjustment: {e}")
+                            time.sleep(self.config.wait_seconds)
+                    else:
+                        # Kill container mode
+                        operation = "kill_container"
+                        
+                        if operation == self.last_operation:
+                            self.consecutive_duplicates += 1
+                            if self.consecutive_duplicates > 2:
+                                logger.info(f"Skipping duplicate container management (done {self.consecutive_duplicates} times already)")
+                                time.sleep(self.config.wait_seconds)
+                                continue
+                        else:
+                            self.consecutive_duplicates = 0
+                        
+                        self.last_operation = operation
+                        
+                        if self.is_container_running():
+                            logger.info(f"Threshold exceeded: Killing {self.config.container_name}")
+                            subprocess.run(["docker", "kill", self.config.container_name], check=False)
+                        else:
+                            logger.info(f"{self.config.container_name} is already stopped.")
+                        
+                        time.sleep(self.config.wait_seconds)
+                else:
+                    # Below threshold
+                    if self.config.tdarr_alter_workers:
+                        # Adjust workers mode
+                        operation = f"adjust_workers_{self.total_count}"
+                        
+                        try:
+                            response = requests.post(
+                                f"{self.config.tdarr_api_url}/api/v2/poll-worker-limits",
+                                headers={"Content-Type": "application/json"},
+                                json={"data": {"nodeID": self.tdarr_node_id}}
+                            )
+                            response.raise_for_status()
+                            data = response.json()
+                            current_limit = data.get('workerLimits', {}).get('transcodegpu', 0)
+                            
+                            if operation == self.last_operation and current_limit == self.last_gpu_limit:
+                                self.consecutive_duplicates += 1
+                                if self.consecutive_duplicates > 2:
+                                    logger.info(f"Skipping duplicate worker adjustment (done {self.consecutive_duplicates} times already)")
+                                    time.sleep(self.config.basic_check)
+                                    continue
+                            else:
+                                self.consecutive_duplicates = 0
+                            
+                            self.last_operation = operation
+                            self.last_gpu_limit = current_limit
+                            
+                            self.adjust_tdarr_workers(self.total_count)
+                        
+                        except Exception as e:
+                            logger.error(f"Error in worker adjustment: {e}")
+                    
+                    # Check container state regardless of mode
+                    operation = "start_container"
+                    
+                    if operation == self.last_operation and self.is_container_running():
+                        self.consecutive_duplicates += 1
+                        if self.consecutive_duplicates > 2:
+                            logger.info(f"Skipping duplicate container check (done {self.consecutive_duplicates} times already)")
+                            time.sleep(self.config.basic_check)
+                            continue
+                    else:
+                        self.consecutive_duplicates = 0
+                    
+                    self.last_operation = operation
+                    
+                    if not self.is_container_running():
+                        # In node kill mode, wait RESTART_DELAY seconds before starting container
+                        if not self.config.tdarr_alter_workers:
+                            logger.info(f"Below threshold in node kill mode -> Waiting {self.config.restart_delay} seconds before starting container {self.config.container_name}.")
+                            initial_watchers = self.get_total_watchers()
+                            delay = self.config.restart_delay
+                            interval = 5
+                            elapsed = 0
+                            
+                            continue_outer_loop = False
+                            while elapsed < delay and not continue_outer_loop:
+                                time.sleep(interval)
+                                elapsed += interval
+                                current_watchers = self.get_total_watchers()
+                                
+                                if current_watchers >= self.config.transcode_threshold:
+                                    logger.info(f"Watcher count increased to {current_watchers} during delay. Skipping container start.")
+                                    continue_outer_loop = True
+                            
+                            if continue_outer_loop:
+                                continue
+                        
+                        logger.info(f"Below threshold -> Starting container {self.config.container_name}.")
+                        subprocess.run(["docker", "start", self.config.container_name], check=False)
+                    else:
+                        logger.info(f"Container {self.config.container_name} is already running.")
+                    
+                    time.sleep(self.config.basic_check)
+            
+            except Exception as e:
+                logger.error(f"Unexpected error in main loop: {e}")
+                time.sleep(self.config.basic_check) = current_limit
+                            
+                            self.adjust_tdarr_workers(self.total_count)
+                        
+                        except Exception as e:
+                            logger.error(f"Error in worker adjustment: {e}")
+                    
+                    # Check container state regardless of mode
+                    operation = "start_container"
+                    
+                    if operation == self.last_operation and self.is_container_running():
+                        self.consecutive_duplicates += 1
+                        if self.consecutive_duplicates > 2:
+                            logger.info(f"Skipping duplicate container check (done {self.consecutive_duplicates} times already)")
+                            time.sleep(self.config.basic_check)
+                            continue
+                    else:
+                        self.consecutive_duplicates = 0
+                    
+                    self.last_operation = operation
+                    
+                    if not self.is_container_running():
+                        # In node kill mode, wait RESTART_DELAY seconds before starting container
+                        if not self.config.tdarr_alter_workers:
+                            logger.info(f"Below threshold in node kill mode -> Waiting {self.config.restart_delay} seconds before starting container {self.config.container_name}.")
+                            initial_watchers = self.get_total_watchers()
+                            delay = self.config.restart_delay
+                            interval = 5
+                            elapsed = 0
+                            
+                            continue_outer_loop = False
+                            while elapsed < delay and not continue_outer_loop:
+                                time.sleep(interval)
+                                elapsed += interval
+                                current_watchers = self.get_total_watchers()
+                                
+                                if current_watchers >= self.config.transcode_threshold:
+                                    logger.info(f"Watcher count increased to {current_watchers} during delay. Skipping container start.")
+                                    continue_outer_loop = True
+                            
+                            if continue_outer_loop:
+                                continue
+                        
+                        logger.info(f"Below threshold -> Starting container {self.config.container_name}.")
+                        subprocess.run(["docker", "start", self.config.container_name], check=False)
+                    else:
+                        logger.info(f"Container {self.config.container_name} is already running.")
+                    
+                    time.sleep(self.config.basic_check)
+            
+            except Exception as e:
+                logger.error(f"Unexpected error in main loop: {e}")
+                time.sleep(self.config.basic_check)
 
 if __name__ == "__main__":
     try:
