@@ -9,8 +9,8 @@ A Docker container that manages Tdarr nodes based on Plex transcoding activity. 
 | `TDARR_NODE_LOG_PATH` | Path to your Tdarr Node log file | `/tdarr/logs/Tdarr_Node_Log.txt` |
 | `TDARR_ALTER_WORKERS` | Whether to adjust workers or kill container | `true` or `false` |
 | `TDARR_DEFAULT_LIMIT` | Maximum number of GPU workers | `3` |
-| `TAUTULLI_API_KEY` | Your Tautulli API key | `abcdef1234567890` |
 | `TAUTULLI_URL` | URL to your Tautulli API | `http://10.0.0.10:8181/api/v2` |
+| `TAUTULLI_API_KEY` | Your Tautulli API key | `abcdef1234567890` |
 | `TDARR_API_URL` | URL to your Tdarr server | `http://10.0.0.10:8265` |
 | `CONTAINER_NAME` | Name of your Tdarr Node container | `tdarr_node` |
 | `OFFSET_THRESHOLD` | Transcodes to start reducing GPU workers | `1` |
@@ -27,13 +27,12 @@ docker run -d \
   --name huntarr-tdarr \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /path/to/tdarr/logs:/tdarr/logs:ro \
+  -e TAUTULLI_URL=http://10.0.0.10:8181/api/v2 \
+  -e TAUTULLI_API_KEY=your_api_key \
+  -e TDARR_API_URL=http://10.0.0.10:8265 \
   -e TDARR_NODE_LOG_PATH=/tdarr/logs/Tdarr_Node_Log.txt \
   -e TDARR_ALTER_WORKERS=true \
   -e TDARR_DEFAULT_LIMIT=3 \
-  -e TAUTULLI_API_KEY=your_api_key \
-  -e TAUTULLI_URL=http://10.0.0.10:8181/api/v2 \
-  -e TDARR_API_URL=http://10.0.0.10:8265 \
   -e CONTAINER_NAME=tdarr_node \
   -e OFFSET_THRESHOLD=1 \
   huntarr/4tdarr:latest
@@ -50,14 +49,13 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /path/to/tdarr/logs:/tdarr/logs:ro
     environment:
+      - TAUTULLI_URL=http://10.0.0.10:8181/api/v2
+      - TAUTULLI_API_KEY=your_api_key
+      - TDARR_API_URL=http://10.0.0.10:8265
       - TDARR_NODE_LOG_PATH=/tdarr/logs/Tdarr_Node_Log.txt
       - TDARR_ALTER_WORKERS=true
       - TDARR_DEFAULT_LIMIT=3
-      - TAUTULLI_API_KEY=your_api_key
-      - TAUTULLI_URL=http://10.0.0.10:8181/api/v2
-      - TDARR_API_URL=http://10.0.0.10:8265
       - CONTAINER_NAME=tdarr_node
       - OFFSET_THRESHOLD=1
 ```
@@ -81,13 +79,12 @@ docker run -d \
   --name huntarr-tdarr \
   --restart unless-stopped \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
-  -v /path/to/tdarr/logs:/tdarr/logs:ro \
+  -e TAUTULLI_URL=http://10.0.0.10:8181/api/v2 \
+  -e TAUTULLI_API_KEY=your_api_key \
+  -e TDARR_API_URL=http://10.0.0.10:8265 \
   -e TDARR_NODE_LOG_PATH=/tdarr/logs/Tdarr_Node_Log.txt \
   -e TDARR_ALTER_WORKERS=false \
   -e TDARR_DEFAULT_LIMIT=2 \
-  -e TAUTULLI_API_KEY=your_api_key \
-  -e TAUTULLI_URL=http://10.0.0.10:8181/api/v2 \
-  -e TDARR_API_URL=http://10.0.0.10:8265 \
   -e CONTAINER_NAME=tdarr_node \
   -e TRANSCODE_THRESHOLD=1 \
   -e RESTART_DELAY=60 \
@@ -105,14 +102,13 @@ services:
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /path/to/tdarr/logs:/tdarr/logs:ro
     environment:
+      - TAUTULLI_URL=http://10.0.0.10:8181/api/v2
+      - TAUTULLI_API_KEY=your_api_key
+      - TDARR_API_URL=http://10.0.0.10:8265
       - TDARR_NODE_LOG_PATH=/tdarr/logs/Tdarr_Node_Log.txt
       - TDARR_ALTER_WORKERS=false
       - TDARR_DEFAULT_LIMIT=2
-      - TAUTULLI_API_KEY=your_api_key
-      - TAUTULLI_URL=http://10.0.0.10:8181/api/v2
-      - TDARR_API_URL=http://10.0.0.10:8265
       - CONTAINER_NAME=tdarr_node
       - TRANSCODE_THRESHOLD=1
       - RESTART_DELAY=60
