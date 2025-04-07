@@ -20,6 +20,11 @@ COPY requirements.txt /app/
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create a requirements file if it doesn't exist
+RUN touch requirements.txt && \
+    echo "requests" >> requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt
+
 # Make sure the script is executable
 RUN chmod +x /app/huntarr.py
 
